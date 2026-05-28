@@ -199,7 +199,7 @@ export default function ForgotPasswordPage() {
               <ArrowLeft size={12} /> Change email
             </button>
             <button
-              onClick={() => emailForm.handleSubmit(onSendOtp)({ email })}
+              onClick={() => onSendOtp({ email })}
               className="text-xs text-[#0F2050] hover:underline font-medium"
             >
               Resend OTP
