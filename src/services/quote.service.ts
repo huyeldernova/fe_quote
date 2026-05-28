@@ -23,10 +23,19 @@ function withHiddenFields(data: QuoteFormData): QuoteFormData {
 
 export const quoteService = {
   getAll: () =>
+    axiosInstance.get<QuoteListItem[]>('/api/v1/quotes').then((r) => {
+      const data = r.data as unknown
+      if (Array.isArray(data)) return data as QuoteListItem[]
+      const paged = data as { content?: QuoteListItem[] }
+      return paged.content ?? []
+    }),
+
+  search: (keyword?: string, status?: string, page = 0, size = 20) =>
     axiosInstance
-      .get<QuoteListItem[]>('/api/v1/quotes')
+      .get<QuoteListItem[]>('/api/v1/quotes/search', {
+        params: { keyword, status, page, size },
+      })
       .then((r) => {
-        // Handle both List[] and PageResponse { content: [] }
         const data = r.data as unknown
         if (Array.isArray(data)) return data as QuoteListItem[]
         const paged = data as { content?: QuoteListItem[] }
@@ -67,7 +76,7 @@ export const quoteService = {
   },
 
   previewPdf: async (id: number): Promise<void> => {
-    const res = await axiosInstance.get(`/api/v1/quotes/${id}/preview`, {
+    const res = await axiosInstance.get(`/api/v1/quotes/${id}/pdf`, {
       responseType: 'blob',
     })
     const url = URL.createObjectURL(res.data as Blob)

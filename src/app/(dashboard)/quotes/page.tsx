@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, Search, FileDown, Send, Copy, Trash2, Eye, Edit2 } from 'lucide-react'
@@ -27,11 +27,14 @@ export default function QuotesPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'' | QuoteStatus>('')
   const [deleting, setDeleting] = useState<number | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (keyword?: string, st?: string) => {
     setLoading(true)
     try {
-      const data = await quoteService.getAll()
+      const data = keyword || st
+        ? await quoteService.search(keyword, st)
+        : await quoteService.getAll()
       setQuotes(data)
     } catch (err) {
       showToast(getErrorMessage(err), 'error')
@@ -42,17 +45,17 @@ export default function QuotesPage() {
 
   useEffect(() => { load() }, [load])
 
-  const filtered = quotes.filter((q) => {
-    const matchSearch = !search ||
-      q.clientName.toLowerCase().includes(search.toLowerCase()) ||
-      q.tourName.toLowerCase().includes(search.toLowerCase()) ||
-      q.quoteNumber.toLowerCase().includes(search.toLowerCase())
-    const matchStatus = !status || q.status === status
-    return matchSearch && matchStatus
-  })
+  // Debounce search
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      load(search || undefined, status || undefined)
+    }, 400)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [search, status, load])
 
   async function handleDelete(id: number) {
-    if (!confirm('Delete this quote? This cannot be undone.')) return
+    if (!confirm('Delete this quote?')) return
     setDeleting(id)
     try {
       await quoteService.delete(id)
@@ -69,15 +72,7 @@ export default function QuotesPage() {
     try {
       const res = await quoteService.duplicate(id)
       showToast(`Duplicated → ${res.quoteNumber}`)
-      load()
-    } catch (err) {
-      showToast(getErrorMessage(err), 'error')
-    }
-  }
-
-  async function handleDownloadPdf(id: number) {
-    try {
-      await quoteService.downloadPdf(id)
+      load(search || undefined, status || undefined)
     } catch (err) {
       showToast(getErrorMessage(err), 'error')
     }
@@ -88,12 +83,11 @@ export default function QuotesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Quotes</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{quotes.length} total quotations</p>
+          <p className="text-sm text-gray-500 mt-0.5">{quotes.length} results</p>
         </div>
         <Link href="/quotes/new"><Button size="sm"><Plus size={14} />New Quote</Button></Link>
       </div>
 
-      {/* Search & filter */}
       <div className="flex gap-3">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -111,7 +105,6 @@ export default function QuotesPage() {
         </select>
       </div>
 
-      {/* Table */}
       {loading ? <LoadingSpinner /> : (
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
@@ -123,17 +116,17 @@ export default function QuotesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.length === 0 && (
+              {quotes.length === 0 && (
                 <tr><td colSpan={8} className="text-center py-12 text-gray-400">
-                  {quotes.length === 0 ? (
+                  {search || status ? 'No results found' : (
                     <div>
                       <p className="font-medium mb-1">No quotes yet</p>
                       <Link href="/quotes/new" className="text-[#0F2050] hover:underline text-sm font-semibold">Create your first quote →</Link>
                     </div>
-                  ) : 'No results match your search'}
+                  )}
                 </td></tr>
               )}
-              {filtered.map((q) => (
+              {quotes.map((q) => (
                 <tr key={q.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-[#0F2050]">{q.quoteNumber}</td>
                   <td className="px-4 py-3 font-medium text-gray-900">{q.clientName}</td>
@@ -144,12 +137,12 @@ export default function QuotesPage() {
                   <td className="px-4 py-3"><Badge status={q.status} /></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => router.push(`/quotes/${q.id}`)} title="View" className="p-1.5 rounded hover:bg-blue-50 text-blue-600 transition-colors"><Eye size={14} /></button>
-                      <button onClick={() => router.push(`/quotes/${q.id}/edit`)} title="Edit" className="p-1.5 rounded hover:bg-amber-50 text-amber-600 transition-colors"><Edit2 size={14} /></button>
-                      <button onClick={() => handleDownloadPdf(q.id)} title="PDF" className="p-1.5 rounded hover:bg-green-50 text-green-600 transition-colors"><FileDown size={14} /></button>
-                      <button onClick={() => router.push(`/quotes/${q.id}#send`)} title="Send" className="p-1.5 rounded hover:bg-purple-50 text-purple-600 transition-colors"><Send size={14} /></button>
-                      <button onClick={() => handleDuplicate(q.id)} title="Duplicate" className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors"><Copy size={14} /></button>
-                      <button onClick={() => handleDelete(q.id)} disabled={deleting === q.id} title="Delete" className="p-1.5 rounded hover:bg-red-50 text-red-500 transition-colors disabled:opacity-40"><Trash2 size={14} /></button>
+                      <button onClick={() => router.push(`/quotes/${q.id}`)} title="View" className="p-1.5 rounded hover:bg-blue-50 text-blue-600"><Eye size={14} /></button>
+                      <button onClick={() => router.push(`/quotes/${q.id}/edit`)} title="Edit" className="p-1.5 rounded hover:bg-amber-50 text-amber-600"><Edit2 size={14} /></button>
+                      <button onClick={() => quoteService.downloadPdf(q.id)} title="PDF" className="p-1.5 rounded hover:bg-green-50 text-green-600"><FileDown size={14} /></button>
+                      <button onClick={() => router.push(`/quotes/${q.id}#send`)} title="Send" className="p-1.5 rounded hover:bg-purple-50 text-purple-600"><Send size={14} /></button>
+                      <button onClick={() => handleDuplicate(q.id)} title="Duplicate" className="p-1.5 rounded hover:bg-gray-100 text-gray-500"><Copy size={14} /></button>
+                      <button onClick={() => handleDelete(q.id)} disabled={deleting === q.id} title="Delete" className="p-1.5 rounded hover:bg-red-50 text-red-500 disabled:opacity-40"><Trash2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
